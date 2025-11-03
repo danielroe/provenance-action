@@ -2,7 +2,7 @@
   "name": "provenance-action",
   "type": "module",
   "version": "0.0.1",
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.20.0",
   "description": "GitHub Action that fails CI when dependencies in your lockfile lose npm provenance or trusted publisher status",
   "author": "Daniel Roe <daniel@roe.dev>",
   "license": "MIT",
@@ -16,8 +16,8 @@
     "release": "bumpp"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "6.1.0",
-    "@types/node": "24.9.1",
+    "@antfu/eslint-config": "6.2.0",
+    "@types/node": "24.10.0",
     "@vitest/coverage-v8": "4.0.4",
     "bumpp": "10.3.1",
     "eslint": "9.38.0",
