@@ -5,6 +5,9 @@ Fail CI when dependencies in your lockfile lose npm provenance or trusted publis
 > [!WARNING]
 > This action is under active development and is only one tool to assist in securing your dependencies.
 
+> [!NOTE]
+> **pnpm users:** As of [pnpm v10.21](https://github.com/pnpm/pnpm/releases/tag/v10.21.0), pnpm now has built-in support for `trustPolicy` in `.npmrc`, which provides native enforcement of provenance checks. If you're using pnpm v10.21 or later, you may not need this action. See the [pnpm documentation](https://pnpm.io/blog/releases/10.21#trust-policy) for more details.
+
 ## ✨ Features
 - supports `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` (v1 and v2+), `bun.lock`
 - handles transitives by comparing resolved versions
