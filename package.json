@@ -18,12 +18,12 @@
   "devDependencies": {
     "@antfu/eslint-config": "6.2.0",
     "@types/node": "24.10.1",
-    "@vitest/coverage-v8": "4.0.8",
+    "@vitest/coverage-v8": "4.0.10",
     "bumpp": "10.3.1",
     "eslint": "9.39.1",
     "simple-git-hooks": "2.13.1",
     "typescript": "5.9.3",
-    "vitest": "4.0.8"
+    "vitest": "4.0.10"
   },
   "simple-git-hooks": {
     "pre-commit": "echo 1"
