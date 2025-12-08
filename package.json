@@ -16,7 +16,7 @@
     "release": "bumpp"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "6.2.0",
+    "@antfu/eslint-config": "6.5.1",
     "@types/node": "24.10.1",
     "@vitest/coverage-v8": "4.0.15",
     "bumpp": "10.3.2",
