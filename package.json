@@ -2,7 +2,7 @@
   "name": "provenance-action",
   "type": "module",
   "version": "0.0.1",
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@10.26.0",
   "description": "GitHub Action that fails CI when dependencies in your lockfile lose npm provenance or trusted publisher status",
   "author": "Daniel Roe <daniel@roe.dev>",
   "license": "MIT",
