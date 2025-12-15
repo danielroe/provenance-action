@@ -20,7 +20,7 @@
     "@types/node": "24.10.4",
     "@vitest/coverage-v8": "4.0.15",
     "bumpp": "10.3.2",
-    "eslint": "9.39.1",
+    "eslint": "9.39.2",
     "simple-git-hooks": "2.13.1",
     "typescript": "5.9.3",
     "vitest": "4.0.15"
