@@ -17,9 +17,9 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "6.7.3",
-    "@types/node": "24.10.7",
+    "@types/node": "24.10.9",
     "@vitest/coverage-v8": "4.0.17",
-    "bumpp": "10.3.2",
+    "bumpp": "10.4.0",
     "eslint": "9.39.2",
     "simple-git-hooks": "2.13.1",
     "typescript": "5.9.3",
