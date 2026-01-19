@@ -6,10 +6,13 @@ import {
   detectLockfile,
   diffDependencySets,
   findLockfileLine,
+  matchesTrustPolicyExclude,
   parseBunLock,
   parseLockfile,
   parseNpmLock,
   parsePnpmLock,
+  parsePnpmWorkspaceConfig,
+  parseTrustPolicyExclude,
   parseYarnBerryLock,
   parseYarnV1Lock,
   readTextFile,
@@ -500,5 +503,171 @@ describe('findLockfileLine', () => {
     const content = '{"x": 1}\n{"y": 2}\n  "version": "1.0.0"\n{"z": 3}'
     const line = findLockfileLine('bun.lock', content, 'noname', '1.0.0')
     expect(typeof line).toBe('number')
+  })
+})
+
+describe('parsePnpmWorkspaceConfig', () => {
+  it('returns empty config when file does not exist', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'provenance-action-'))
+    try {
+      const result = parsePnpmWorkspaceConfig(dir)
+      expect(result).toEqual({})
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('parses trustPolicyExclude from pnpm-workspace.yaml', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'provenance-action-'))
+    try {
+      const content = `trustPolicyExclude:
+  - 'chokidar@4.0.3'
+  - 'webpack@4.47.0 || 5.102.1'
+  - '@babel/core@7.28.5'
+`
+      writeFileSync(join(dir, 'pnpm-workspace.yaml'), content, 'utf8')
+      const result = parsePnpmWorkspaceConfig(dir)
+      expect(result.trustPolicyExclude).toEqual([
+        'chokidar@4.0.3',
+        'webpack@4.47.0 || 5.102.1',
+        '@babel/core@7.28.5',
+      ])
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('parseTrustPolicyExclude', () => {
+  it('parses list format with single quotes', () => {
+    const content = `trustPolicyExclude:
+  - 'chokidar@4.0.3'
+  - 'webpack'
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3', 'webpack'])
+  })
+
+  it('parses list format with double quotes', () => {
+    const content = `trustPolicyExclude:
+  - "chokidar@4.0.3"
+  - "webpack@5.0.0"
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3', 'webpack@5.0.0'])
+  })
+
+  it('parses list format without quotes', () => {
+    const content = `trustPolicyExclude:
+  - chokidar@4.0.3
+  - webpack
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3', 'webpack'])
+  })
+
+  it('parses inline array format', () => {
+    const content = `trustPolicyExclude: ['chokidar@4.0.3', 'webpack']`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3', 'webpack'])
+  })
+
+  it('parses inline array format with double quotes', () => {
+    const content = `trustPolicyExclude: ["chokidar@4.0.3", "webpack"]`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3', 'webpack'])
+  })
+
+  it('handles empty content', () => {
+    const result = parseTrustPolicyExclude('')
+    expect(result).toEqual({})
+  })
+
+  it('handles content without trustPolicyExclude', () => {
+    const content = `packages:
+  - 'packages/*'
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result).toEqual({})
+  })
+
+  it('handles comments', () => {
+    const content = `# This is a comment
+trustPolicyExclude:
+  # Another comment
+  - chokidar@4.0.3
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3'])
+  })
+
+  it('stops parsing at next top-level key', () => {
+    const content = `trustPolicyExclude:
+  - chokidar@4.0.3
+packages:
+  - 'packages/*'
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['chokidar@4.0.3'])
+  })
+
+  it('handles disjunction patterns', () => {
+    const content = `trustPolicyExclude:
+  - 'webpack@4.47.0 || 5.102.1'
+`
+    const result = parseTrustPolicyExclude(content)
+    expect(result.trustPolicyExclude).toEqual(['webpack@4.47.0 || 5.102.1'])
+  })
+})
+
+describe('matchesTrustPolicyExclude', () => {
+  it('matches package without version (any version)', () => {
+    const patterns = ['chokidar']
+    expect(matchesTrustPolicyExclude('chokidar', '4.0.3', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('chokidar', '3.0.0', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('other', '1.0.0', patterns)).toBe(false)
+  })
+
+  it('matches package with specific version', () => {
+    const patterns = ['chokidar@4.0.3']
+    expect(matchesTrustPolicyExclude('chokidar', '4.0.3', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('chokidar', '3.0.0', patterns)).toBe(false)
+    expect(matchesTrustPolicyExclude('other', '4.0.3', patterns)).toBe(false)
+  })
+
+  it('matches scoped packages', () => {
+    const patterns = ['@babel/core@7.28.5']
+    expect(matchesTrustPolicyExclude('@babel/core', '7.28.5', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('@babel/core', '7.0.0', patterns)).toBe(false)
+    expect(matchesTrustPolicyExclude('@babel/preset-env', '7.28.5', patterns)).toBe(false)
+  })
+
+  it('matches scoped packages without version', () => {
+    const patterns = ['@babel/core']
+    expect(matchesTrustPolicyExclude('@babel/core', '7.28.5', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('@babel/core', '7.0.0', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('@babel/preset-env', '7.28.5', patterns)).toBe(false)
+  })
+
+  it('matches disjunction patterns', () => {
+    const patterns = ['webpack@4.47.0 || 5.102.1']
+    expect(matchesTrustPolicyExclude('webpack', '4.47.0', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('webpack', '5.102.1', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('webpack', '5.0.0', patterns)).toBe(false)
+    expect(matchesTrustPolicyExclude('other', '4.47.0', patterns)).toBe(false)
+  })
+
+  it('matches multiple patterns', () => {
+    const patterns = ['chokidar@4.0.3', 'webpack', '@babel/core@7.28.5']
+    expect(matchesTrustPolicyExclude('chokidar', '4.0.3', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('webpack', '5.0.0', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('@babel/core', '7.28.5', patterns)).toBe(true)
+    expect(matchesTrustPolicyExclude('lodash', '4.0.0', patterns)).toBe(false)
+  })
+
+  it('returns false for empty patterns', () => {
+    expect(matchesTrustPolicyExclude('chokidar', '4.0.3', [])).toBe(false)
   })
 })

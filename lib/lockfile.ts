@@ -3,6 +3,154 @@ import { join } from 'node:path'
 
 export type VersionsSet = Map<string, Set<string>>
 
+export interface PnpmWorkspaceConfig {
+  trustPolicyExclude?: string[]
+}
+
+/**
+ * Parse pnpm-workspace.yaml and extract trustPolicyExclude configuration
+ */
+export function parsePnpmWorkspaceConfig(workspacePath: string): PnpmWorkspaceConfig {
+  const configPath = join(workspacePath, 'pnpm-workspace.yaml')
+  if (!existsSync(configPath)) {
+    return {}
+  }
+
+  try {
+    const content = readFileSync(configPath, 'utf8')
+    return parseTrustPolicyExclude(content)
+  }
+  catch {
+    return {}
+  }
+}
+
+/**
+ * Parse trustPolicyExclude from pnpm-workspace.yaml content
+ * Handles formats like:
+ * ```yaml
+ * trustPolicyExclude:
+ *   - 'chokidar@4.0.3'
+ *   - 'webpack@4.47.0 || 5.102.1'
+ * ```
+ * or
+ * ```yaml
+ * trustPolicyExclude:
+ * - chokidar@4.0.3
+ * - webpack
+ * ```
+ */
+export function parseTrustPolicyExclude(content: string): PnpmWorkspaceConfig {
+  const lines = content.split(/\r?\n/)
+  const result: PnpmWorkspaceConfig = {}
+  let inTrustPolicyExclude = false
+  let baseIndent = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue
+    }
+
+    // Check for trustPolicyExclude key
+    if (/^trustPolicyExclude\s*:\s*$/.test(trimmed)) {
+      inTrustPolicyExclude = true
+      result.trustPolicyExclude = []
+      // Calculate base indentation for list items
+      const match = /^(\s*)trustPolicyExclude/.exec(line)
+      baseIndent = match ? match[1].length : 0
+      continue
+    }
+
+    // Handle inline array format: trustPolicyExclude: [...]
+    const inlineMatch = /^trustPolicyExclude\s*:\s*\[([^\]]*)\]\s*$/.exec(trimmed)
+    if (inlineMatch) {
+      result.trustPolicyExclude = inlineMatch[1]
+        .split(',')
+        .map(s => s.trim())
+        .map(s => s.replace(/^['"]|['"]$/g, ''))
+        .filter(Boolean)
+      return result
+    }
+
+    if (inTrustPolicyExclude) {
+      // Check if we've left the trustPolicyExclude section
+      // A new top-level key or key at same level ends the list
+      const currentIndent = line.length - line.trimStart().length
+      if (currentIndent <= baseIndent && !trimmed.startsWith('-')) {
+        break
+      }
+
+      // Parse list items
+      const itemMatch = /^[ \t]*-[ \t]+(\S.*)$/.exec(line)
+      if (itemMatch) {
+        let value = itemMatch[1].trim()
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('\'') && value.endsWith('\''))) {
+          value = value.slice(1, -1)
+        }
+        result.trustPolicyExclude!.push(value)
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * Check if a package name and version matches any of the trustPolicyExclude patterns.
+ * Supports patterns like:
+ * - 'chokidar' - matches any version
+ * - 'chokidar@4.0.3' - matches specific version
+ * - 'webpack@4.47.0 || 5.102.1' - matches multiple versions
+ * - '@babel/core@7.28.5' - scoped packages
+ */
+export function matchesTrustPolicyExclude(name: string, version: string, excludePatterns: string[]): boolean {
+  for (const pattern of excludePatterns) {
+    // Handle disjunction patterns like 'webpack@4.47.0 || 5.102.1'
+    const parts = pattern.split('||').map(p => p.trim())
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+
+      if (i === 0) {
+        // First part includes the package name
+        const atIndex = part.startsWith('@') ? part.indexOf('@', 1) : part.indexOf('@')
+
+        if (atIndex === -1) {
+          // No version specified, matches any version of this package
+          if (part === name) {
+            return true
+          }
+        }
+        else {
+          const patternName = part.slice(0, atIndex)
+          const patternVersion = part.slice(atIndex + 1)
+          if (patternName === name && patternVersion === version) {
+            return true
+          }
+        }
+      }
+      else {
+        // Subsequent parts are just version numbers for the same package
+        // Extract package name from the first part
+        const firstPart = parts[0]
+        const atIndex = firstPart.startsWith('@') ? firstPart.indexOf('@', 1) : firstPart.indexOf('@')
+        const patternName = atIndex === -1 ? firstPart : firstPart.slice(0, atIndex)
+
+        if (patternName === name && part === version) {
+          return true
+        }
+      }
+    }
+  }
+
+  return false
+}
+
 export const supportedLockfiles = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'] as const
 
 export function detectLockfile(workspacePath: string): string | undefined {

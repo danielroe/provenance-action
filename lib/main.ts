@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { annotate, appendSummary, getInput, log, logError, setOutput } from './gh.ts'
 import { gitShowFile, guessDefaultBaseRef } from './git.ts'
-import { detectLockfile, diffDependencySets, findLockfileLine, parseLockfile, readTextFile, supportedLockfiles } from './lockfile.ts'
+import { detectLockfile, diffDependencySets, findLockfileLine, matchesTrustPolicyExclude, parseLockfile, parsePnpmWorkspaceConfig, readTextFile, supportedLockfiles } from './lockfile.ts'
 import { getProvenanceDetails, hasProvenance, hasTrustedPublisher } from './provenance.ts'
 
 export async function run(): Promise<void> {
@@ -43,6 +43,14 @@ export async function run(): Promise<void> {
       return
     }
 
+    // Read trustPolicyExclude from pnpm-workspace.yaml (only for pnpm lockfiles)
+    const trustPolicyExclude = lockfilePath.endsWith('pnpm-lock.yaml')
+      ? parsePnpmWorkspaceConfig(workspacePath).trustPolicyExclude || []
+      : []
+    if (trustPolicyExclude.length > 0) {
+      log(`Loaded ${trustPolicyExclude.length} trustPolicyExclude pattern(s) from pnpm-workspace.yaml`)
+    }
+
     const provenanceCache = new Map<string, boolean>()
     const provenanceDetailsCache = new Map<string, ProvenanceDetails>()
     const trustedPublisherCache = new Map<string, boolean>()
@@ -60,6 +68,12 @@ export async function run(): Promise<void> {
       for (const newVersion of change.current) {
         if (change.previous.has(newVersion))
           continue
+
+        // Skip packages that match trustPolicyExclude patterns
+        if (trustPolicyExclude.length > 0 && matchesTrustPolicyExclude(change.name, newVersion, trustPolicyExclude)) {
+          log(`Skipping ${change.name}@${newVersion} (excluded by trustPolicyExclude)`)
+          continue
+        }
 
         const [hasProvNew, newDetails, hasTPNew] = await Promise.all([
           hasProvenance(change.name, newVersion, provenanceCache),
