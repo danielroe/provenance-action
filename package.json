@@ -22,7 +22,7 @@
     "bumpp": "11.0.1",
     "eslint": "10.1.0",
     "simple-git-hooks": "2.13.1",
-    "typescript": "5.9.3",
+    "typescript": "6.0.2",
     "vitest": "4.1.0"
   },
   "simple-git-hooks": {
