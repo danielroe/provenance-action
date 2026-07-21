@@ -4,10 +4,12 @@ import { promisify } from 'node:util'
 
 const execFile = promisify(_execFile)
 
+const ORIGIN_HEAD_RE = /refs\/remotes\/origin\/(.*)$/
+
 export async function guessDefaultBaseRef(): Promise<string> {
   try {
     const { stdout } = await execFile('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], { cwd: process.cwd() })
-    const m = stdout.trim().match(/refs\/remotes\/origin\/(.*)$/)
+    const m = stdout.trim().match(ORIGIN_HEAD_RE)
     if (m)
       return `origin/${m[1]}`
   }

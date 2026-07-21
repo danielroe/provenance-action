@@ -40,7 +40,7 @@ vi.mock('node:https', () => {
       },
     }
     if (cb)
-      setTimeout(() => cb(res), 0)
+      setTimeout(cb, 0, res)
     // Emit data/end
     setTimeout(() => {
       res._dataHandlers.forEach((fn: any) => fn(r.body))
