@@ -1,6 +1,6 @@
 # `danielroe/provenance-action`
 
-Fail CI when dependencies in your lockfile lose npm provenance or trusted publisher status.
+Fail CI when dependencies in your lockfile lose npm provenance, trusted publisher or staged publishing status.
 
 > [!WARNING]
 > This action is under active development and is only one tool to assist in securing your dependencies.
@@ -61,7 +61,7 @@ jobs:
 - `fail-on-provenance-change` (optional): When `true`, fail on provenance repository/branch changes. Default: `false`.
 
 ## 📤 Outputs
-- `downgraded`: JSON array of `{ name, from, to, downgradeType }` for detected downgrades. `downgradeType` is `provenance` or `trusted_publisher`.
+- `downgraded`: JSON array of `{ name, from, to, downgradeType }` for detected downgrades. `downgradeType` is `provenance`, `trusted_publisher` or `staged_publish`.
 - `changed`: JSON array of provenance change events `{ name, from, to, type, previousRepository?, newRepository?, previousBranch?, newBranch? }`.
 
 ## 🧠 How it works
@@ -77,7 +77,7 @@ Trusted publishing links a package back to its source repo and build workflow, p
 However, maintainers can still be phished or coerced into publishing without trusted publishing enabled, or switching to a non‑trusted path. In those cases, packages may still carry attestations, but the chain back to the trusted publisher can be weakened.
 
 This action:
-- Detects when a dependency update loses npm provenance (no attestations) or loses trusted publisher (attestations but no trusted publisher marker), and
+- Detects when a dependency update loses npm provenance (no attestations), loses trusted publisher (attestations but no trusted publisher marker), or loses [staged publishing](https://docs.npmjs.com/staged-publishing) (previous version was published via a staged release with a recorded approver; new version was not), and
 - Fails CI by default (configurable), before that change lands in your main branch.
 
 This is a stopgap until package managers enforce stronger policies natively. Until then, it offers a lightweight guardrail in CI.

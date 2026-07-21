@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getProvenanceDetails, hasProvenance, hasTrustedPublisher } from '../lib/provenance.ts'
+import { getProvenanceDetails, hasProvenance, hasStagedPublish, hasTrustedPublisher } from '../lib/provenance.ts'
 
 let responder: ((url: string) => { statusCode: number, body: string } | { error: Error }) | undefined
 
@@ -241,6 +241,43 @@ describe('provenance via fixtures with mocked https', () => {
     })
     const cache = new Map<string, boolean>()
     await expect(hasProvenance('nuxt', '9.9.9', cache)).resolves.toBe(false)
+  })
+
+  it('hasStagedPublish true when _npmUser has approver', async () => {
+    const metaStaged = JSON.stringify({
+      versions: {
+        '9.9.9': {
+          _npmUser: { name: 'GitHub Actions', email: 'npm-oidc-no-reply@github.com', trustedPublisher: { id: 'github', oidcConfigId: 'x' }, approver: { name: 'danielroe' } },
+        },
+        '9.9.8': {
+          _npmUser: { name: 'GitHub Actions', email: 'npm-oidc-no-reply@github.com', trustedPublisher: { id: 'github', oidcConfigId: 'x' } },
+        },
+      },
+    })
+    setNuxtResponder({
+      override: {
+        'https://registry.npmjs.org/nuxt': { statusCode: 200, body: metaStaged },
+      },
+    })
+    const cache = new Map<string, boolean>()
+    await expect(hasStagedPublish('nuxt', '9.9.9', cache)).resolves.toBe(true)
+    await expect(hasStagedPublish('nuxt', '9.9.8', cache)).resolves.toBe(false)
+  })
+
+  it('hasStagedPublish caches results and returns false on metadata error', async () => {
+    setNuxtResponder({
+      override: {
+        'https://registry.npmjs.org/nuxt': { statusCode: 500, body: 'err' },
+      },
+    })
+    const cache = new Map<string, boolean>()
+    await expect(hasStagedPublish('nuxt', '1.2.3', cache)).resolves.toBe(false)
+    setNuxtResponder({
+      override: {
+        'https://registry.npmjs.org/nuxt': { statusCode: 200, body: JSON.stringify({ versions: { '1.2.3': { _npmUser: { approver: { name: 'x' } } } } }) },
+      },
+    })
+    await expect(hasStagedPublish('nuxt', '1.2.3', cache)).resolves.toBe(false)
   })
 
   it('hasTrustedPublisher returns false on metadata error (catch path)', async () => {
