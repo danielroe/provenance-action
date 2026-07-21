@@ -3,6 +3,25 @@ import { join } from 'node:path'
 
 export type VersionsSet = Map<string, Set<string>>
 
+const NEWLINE_RE = /\r?\n/
+const TRUST_POLICY_KEY_RE = /^trustPolicyExclude\s*:\s*$/
+const TRUST_POLICY_INDENT_RE = /^(\s*)trustPolicyExclude/
+const TRUST_POLICY_INLINE_RE = /^trustPolicyExclude\s*:\s*\[([^\]]*)\]\s*$/
+const SURROUNDING_QUOTES_RE = /^['"]|['"]$/g
+const LIST_ITEM_RE = /^[ \t]*-[ \t]+(\S.*)$/
+const TRAILING_SLASH_RE = /\/$/
+const PACKAGES_KEY_RE = /^packages:\s*$/
+const TOP_LEVEL_KEY_RE = /^\S.*:$/
+const PNPM_PKG_KEY_RE = /^\s{2}(\S.*?):\s*$/
+const LEADING_WS_RE = /^\s/
+const TRAILING_COLON_RE = /:$/
+const DOUBLE_QUOTES_RE = /^"|"$/g
+const SINGLE_QUOTES_RE = /^'|'$/g
+const YARN_V1_VERSION_RE = /^\s{2}version\s+"([^"]+)"/
+const YARN_BERRY_VERSION_RE = /^\s{2}version:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/
+const LINE_COMMENT_RE = /(^|\s)\/\/.*$/
+const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g
+
 export interface PnpmWorkspaceConfig {
   trustPolicyExclude?: string[]
 }
@@ -41,7 +60,7 @@ export function parsePnpmWorkspaceConfig(workspacePath: string): PnpmWorkspaceCo
  * ```
  */
 export function parseTrustPolicyExclude(content: string): PnpmWorkspaceConfig {
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   const result: PnpmWorkspaceConfig = {}
   let inTrustPolicyExclude = false
   let baseIndent = 0
@@ -56,22 +75,22 @@ export function parseTrustPolicyExclude(content: string): PnpmWorkspaceConfig {
     }
 
     // Check for trustPolicyExclude key
-    if (/^trustPolicyExclude\s*:\s*$/.test(trimmed)) {
+    if (TRUST_POLICY_KEY_RE.test(trimmed)) {
       inTrustPolicyExclude = true
       result.trustPolicyExclude = []
       // Calculate base indentation for list items
-      const match = /^(\s*)trustPolicyExclude/.exec(line)
+      const match = TRUST_POLICY_INDENT_RE.exec(line)
       baseIndent = match ? match[1].length : 0
       continue
     }
 
     // Handle inline array format: trustPolicyExclude: [...]
-    const inlineMatch = /^trustPolicyExclude\s*:\s*\[([^\]]*)\]\s*$/.exec(trimmed)
+    const inlineMatch = TRUST_POLICY_INLINE_RE.exec(trimmed)
     if (inlineMatch) {
       result.trustPolicyExclude = inlineMatch[1]
         .split(',')
         .map(s => s.trim())
-        .map(s => s.replace(/^['"]|['"]$/g, ''))
+        .map(s => s.replace(SURROUNDING_QUOTES_RE, ''))
         .filter(Boolean)
       return result
     }
@@ -85,7 +104,7 @@ export function parseTrustPolicyExclude(content: string): PnpmWorkspaceConfig {
       }
 
       // Parse list items
-      const itemMatch = /^[ \t]*-[ \t]+(\S.*)$/.exec(line)
+      const itemMatch = LIST_ITEM_RE.exec(line)
       if (itemMatch) {
         let value = itemMatch[1].trim()
         // Remove quotes if present
@@ -201,8 +220,7 @@ export function parseNpmLock(content: string): VersionsSet {
     if (!name) {
       const parts = key.split('node_modules/').filter(Boolean)
       if (parts.length > 0) {
-        const last = parts[parts.length - 1].replace(/\/$/, '')
-        name = last
+        name = parts.at(-1)!.replace(TRAILING_SLASH_RE, '')
       }
     }
     if (!name)
@@ -214,21 +232,21 @@ export function parseNpmLock(content: string): VersionsSet {
 
 export function parsePnpmLock(content: string): VersionsSet {
   const result: VersionsSet = new Map()
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   let inPackages = false
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (!inPackages) {
-      if (/^packages:\s*$/.test(line)) {
+      if (PACKAGES_KEY_RE.test(line)) {
         inPackages = true
       }
       continue
     }
-    if (/^\S.*:$/.test(line)) {
-      inPackages = /^packages:\s*$/.test(line)
+    if (TOP_LEVEL_KEY_RE.test(line)) {
+      inPackages = PACKAGES_KEY_RE.test(line)
       continue
     }
-    const m = /^\s{2}(\S.*?):\s*$/.exec(line)
+    const m = PNPM_PKG_KEY_RE.exec(line)
     if (!m)
       continue
     let key = m[1]
@@ -252,11 +270,11 @@ export function parsePnpmLock(content: string): VersionsSet {
 
 export function parseYarnV1Lock(content: string): VersionsSet {
   const result: VersionsSet = new Map()
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   let i = 0
   while (i < lines.length) {
     let line = lines[i]
-    if (!line || /^\s/.test(line)) {
+    if (!line || LEADING_WS_RE.test(line)) {
       i++
       continue
     }
@@ -275,15 +293,15 @@ export function parseYarnV1Lock(content: string): VersionsSet {
     const specifiers = headerLines.join('\n')
       .split(',\n')
       .map(s => s.trim())
-      .map(s => s.replace(/:$/, ''))
-      .map(s => s.replace(/^"|"$/g, ''))
+      .map(s => s.replace(TRAILING_COLON_RE, ''))
+      .map(s => s.replace(DOUBLE_QUOTES_RE, ''))
 
     let version: string | undefined
     while (i < lines.length) {
       line = lines[i]
       if (!line || (!line.startsWith(' ') && line.trimEnd().endsWith(':')))
         break
-      const vm = /^\s{2}version\s+"([^"]+)"/.exec(line)
+      const vm = YARN_V1_VERSION_RE.exec(line)
       if (vm)
         version = vm[1]
       i++
@@ -301,7 +319,7 @@ export function parseYarnV1Lock(content: string): VersionsSet {
 
 export function parseYarnBerryLock(content: string): VersionsSet {
   const result: VersionsSet = new Map()
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   let i = 0
   while (i < lines.length) {
     let line = lines[i]
@@ -321,8 +339,8 @@ export function parseYarnBerryLock(content: string): VersionsSet {
     const specifiers = headerLine
       .split(',')
       .map(s => s.trim())
-      .map(s => s.replace(/:$/, ''))
-      .map(s => s.replace(/^"|"$/g, '').replace(/^'|'$/g, ''))
+      .map(s => s.replace(TRAILING_COLON_RE, ''))
+      .map(s => s.replace(DOUBLE_QUOTES_RE, '').replace(SINGLE_QUOTES_RE, ''))
 
     i++
     let version: string | undefined
@@ -332,7 +350,7 @@ export function parseYarnBerryLock(content: string): VersionsSet {
         break
       if (!line.startsWith(' '))
         break
-      const vm = /^\s{2}version:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/.exec(line)
+      const vm = YARN_BERRY_VERSION_RE.exec(line)
       if (vm)
         version = vm[1] || vm[2] || vm[3]
       i++
@@ -359,8 +377,8 @@ export function parseBunLock(content: string): VersionsSet {
     // Fallback: strip simple // comments and retry (very naive JSONC support)
     try {
       const withoutLineComments = content
-        .split(/\r?\n/)
-        .map(l => l.replace(/(^|\s)\/\/.*$/, '$1'))
+        .split(NEWLINE_RE)
+        .map(l => l.replace(LINE_COMMENT_RE, '$1'))
         .join('\n')
       json = JSON.parse(withoutLineComments)
     }
@@ -424,7 +442,7 @@ export function yarnV1SpecifierToName(spec: string): string | undefined {
 }
 
 export function yarnBerrySpecifierToName(spec: string): string | undefined {
-  const s = spec.replace(/^"|"$/g, '').replace(/^'|'$/g, '')
+  const s = spec.replace(DOUBLE_QUOTES_RE, '').replace(SINGLE_QUOTES_RE, '')
   if (s.startsWith('@')) {
     const at2 = s.indexOf('@', 1)
     if (at2 <= 0)
@@ -505,7 +523,7 @@ function findLineInNpmLock(content: string, name: string): number | undefined {
 }
 
 function findLineInPnpmLock(content: string, name: string, version: string): number | undefined {
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   const needle = `/${name}@${version}`
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
@@ -525,7 +543,7 @@ function findLineInPnpmLock(content: string, name: string, version: string): num
 }
 
 function findLineInYarnV1Lock(content: string, name: string, version: string): number | undefined {
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   for (let i = 0; i < lines.length; i++) {
     const header = lines[i]
     if (!header || header.startsWith(' '))
@@ -536,7 +554,7 @@ function findLineInYarnV1Lock(content: string, name: string, version: string): n
       continue
     let j = i + 1
     while (j < lines.length && (lines[j].startsWith(' ') || !lines[j])) {
-      const m = /^\s{2}version\s+"([^"]+)"/.exec(lines[j])
+      const m = YARN_V1_VERSION_RE.exec(lines[j])
       if (m && m[1] === version)
         return j + 1
       if (lines[j] && !lines[j].startsWith(' ') && lines[j].trimEnd().endsWith(':'))
@@ -548,7 +566,7 @@ function findLineInYarnV1Lock(content: string, name: string, version: string): n
 }
 
 function findLineInYarnBerryLock(content: string, name: string, version: string): number | undefined {
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
   for (let i = 0; i < lines.length; i++) {
     const header = lines[i]
     if (!header || header.startsWith(' ') || header.trimStart().startsWith('#'))
@@ -559,7 +577,7 @@ function findLineInYarnBerryLock(content: string, name: string, version: string)
       continue
     let j = i + 1
     while (j < lines.length && (lines[j].startsWith(' ') || !lines[j])) {
-      const m = /^\s{2}version:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/.exec(lines[j])
+      const m = YARN_BERRY_VERSION_RE.exec(lines[j])
       const ver = m ? (m[1] || m[2] || m[3]) : undefined
       if (ver === version)
         return j + 1
@@ -572,7 +590,8 @@ function findLineInYarnBerryLock(content: string, name: string, version: string)
 }
 
 function findLineInBunLock(content: string, name: string, version: string): number | undefined {
-  const lines = content.split(/\r?\n/)
+  const lines = content.split(NEWLINE_RE)
+  const versionRe = new RegExp(`"version"\\s*:\\s*"${version.replace(REGEX_ESCAPE_RE, '\\$&')}"`)
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
     if (!l)
@@ -580,7 +599,7 @@ function findLineInBunLock(content: string, name: string, version: string): numb
     if (l.includes(`"name"`) && l.includes(`"${name}"`)) {
       for (let j = i; j < Math.min(lines.length, i + 30); j++) {
         const v = lines[j]
-        if (new RegExp(`\"version\"\\s*:\\s*\"${version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\"`).test(v))
+        if (versionRe.test(v))
           return j + 1
         if (v && v.includes('}'))
           break
@@ -593,7 +612,7 @@ function findLineInBunLock(content: string, name: string, version: string): numb
       return i + 1
   }
   for (let i = 0; i < lines.length; i++) {
-    if (new RegExp(`\"version\"\\s*:\\s*\"${version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\"`).test(lines[i]))
+    if (versionRe.test(lines[i]))
       return i + 1
   }
   return undefined

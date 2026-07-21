@@ -242,13 +242,17 @@ export function extractRepoAndRef(att: any): { repository?: string, ref?: string
   return { repository, ref }
 }
 
+const OWNER_REPO_RE = /^[^\s/]+\/[^^\s/]+$/
+const GIT_SUFFIX_RE = /\.git$/
+const GIT_PLUS_PREFIX_RE = /^git\+/
+
 export function normalizeRepository(repo: string): string {
-  if (/^[^\s/]+\/[^^\s/]+$/.test(repo))
-    return repo.replace(/\.git$/, '')
+  if (OWNER_REPO_RE.test(repo))
+    return repo.replace(GIT_SUFFIX_RE, '')
   try {
-    const url = new URL(repo.replace(/^git\+/, ''))
+    const url = new URL(repo.replace(GIT_PLUS_PREFIX_RE, ''))
     if (url.hostname === 'github.com' || url.hostname.endsWith('.github.com')) {
-      const parts = url.pathname.replace(/\.git$/, '').split('/').filter(Boolean)
+      const parts = url.pathname.replace(GIT_SUFFIX_RE, '').split('/').filter(Boolean)
       if (parts.length >= 2)
         return `${parts[0]}/${parts[1]}`
     }
@@ -259,7 +263,7 @@ export function normalizeRepository(repo: string): string {
 
 export function parseRepoRefFromUri(uri: string): { repository?: string, ref?: string } | undefined {
   try {
-    const cleaned = uri.replace(/^git\+/, '')
+    const cleaned = uri.replace(GIT_PLUS_PREFIX_RE, '')
     const at = cleaned.lastIndexOf('@')
     let repoUrl = cleaned
     let ref: string | undefined
@@ -271,7 +275,7 @@ export function parseRepoRefFromUri(uri: string): { repository?: string, ref?: s
     const allowedHosts = ['github.com', 'www.github.com']
     if (!allowedHosts.includes(url.hostname))
       return undefined
-    const parts = url.pathname.replace(/\.git$/, '').split('/').filter(Boolean)
+    const parts = url.pathname.replace(GIT_SUFFIX_RE, '').split('/').filter(Boolean)
     if (parts.length < 2)
       return undefined
     const repository = `${parts[0]}/${parts[1]}`
