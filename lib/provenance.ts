@@ -149,6 +149,23 @@ export async function hasTrustedPublisher(name: string, version: string, cache: 
   }
 }
 
+export async function hasStagedPublish(name: string, version: string, cache: Map<string, boolean>): Promise<boolean> {
+  const key = `${name}@${version}`
+  if (cache.has(key))
+    return cache.get(key) as boolean
+  try {
+    const meta = await httpJson(packageMetadataUrl(name))
+    const ver = meta && meta.versions && meta.versions[version]
+    const staged = Boolean(ver && ver._npmUser && ver._npmUser.approver)
+    cache.set(key, staged)
+    return staged
+  }
+  catch {
+    cache.set(key, false)
+    return false
+  }
+}
+
 function packageMetadataUrl(name: string): string {
   return `https://registry.npmjs.org/${encodeURIComponent(name)}`
 }

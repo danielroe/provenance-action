@@ -4,7 +4,7 @@ import process from 'node:process'
 import { annotate, appendSummary, getInput, log, logError, setOutput } from './gh.ts'
 import { gitShowFile, guessDefaultBaseRef } from './git.ts'
 import { detectLockfile, diffDependencySets, findLockfileLine, matchesTrustPolicyExclude, parseLockfile, parsePnpmWorkspaceConfig, readTextFile, supportedLockfiles } from './lockfile.ts'
-import { getProvenanceDetails, hasProvenance, hasTrustedPublisher } from './provenance.ts'
+import { getProvenanceDetails, hasProvenance, hasStagedPublish, hasTrustedPublisher } from './provenance.ts'
 
 export async function run(): Promise<void> {
   try {
@@ -54,7 +54,8 @@ export async function run(): Promise<void> {
     const provenanceCache = new Map<string, boolean>()
     const provenanceDetailsCache = new Map<string, ProvenanceDetails>()
     const trustedPublisherCache = new Map<string, boolean>()
-    type DowngradeType = 'provenance' | 'trusted_publisher'
+    const stagedPublishCache = new Map<string, boolean>()
+    type DowngradeType = 'provenance' | 'trusted_publisher' | 'staged_publish'
     interface DowngradeEvent { name: string, from: string, to: string, downgradeType: DowngradeType, keptProvenance?: boolean }
     const events: DowngradeEvent[] = []
     type ChangeWarningType = 'repo_changed' | 'branch_changed'
@@ -75,11 +76,22 @@ export async function run(): Promise<void> {
           continue
         }
 
-        const [hasProvNew, newDetails, hasTPNew] = await Promise.all([
+        const [hasProvNew, newDetails, hasTPNew, hasStagedNew] = await Promise.all([
           hasProvenance(change.name, newVersion, provenanceCache),
           getProvenanceDetails(change.name, newVersion, provenanceDetailsCache),
           hasTrustedPublisher(change.name, newVersion, trustedPublisherCache),
+          hasStagedPublish(change.name, newVersion, stagedPublishCache),
         ])
+
+        if (!hasStagedNew) {
+          for (const prevVersion of change.previous) {
+            const hadStagedPrev = await hasStagedPublish(change.name, prevVersion, stagedPublishCache)
+            if (hadStagedPrev) {
+              events.push({ name: change.name, from: prevVersion, to: newVersion, downgradeType: 'staged_publish', keptProvenance: hasProvNew })
+              break
+            }
+          }
+        }
 
         if (!hasTPNew) {
           for (const prevVersion of change.previous) {
@@ -130,7 +142,7 @@ export async function run(): Promise<void> {
     }
 
     if (events.length > 0) {
-      const summaryLines = events.map(d => `- ${d.name}: ${d.from} -> ${d.to} [${d.downgradeType}${d.downgradeType === 'trusted_publisher' && d.keptProvenance ? ', kept provenance' : ''}]`)
+      const summaryLines = events.map(d => `- ${d.name}: ${d.from} -> ${d.to} [${d.downgradeType}${d.downgradeType !== 'provenance' && d.keptProvenance ? ', kept provenance' : ''}]`)
       log('Detected dependency downgrades:')
       for (const line of summaryLines) log(line)
       appendSummary(['Dependency downgrades:', ...summaryLines].join('\n'))
@@ -151,8 +163,10 @@ export async function run(): Promise<void> {
       const line = findLockfileLine(lockfilePath, headContent, d.name, d.to)
       const shouldFail = (failAnyDowngrade || (failOnlyProvenanceLoss && d.downgradeType === 'provenance'))
       const level: 'error' | 'warning' = shouldFail ? 'error' : 'warning'
-      const base = d.downgradeType === 'provenance' ? 'lost npm provenance' : 'lost trusted publisher'
-      const extra = d.downgradeType === 'trusted_publisher' && d.keptProvenance ? ' (kept provenance)' : ''
+      const base = d.downgradeType === 'provenance'
+        ? 'lost npm provenance'
+        : d.downgradeType === 'staged_publish' ? 'lost staged publishing' : 'lost trusted publisher'
+      const extra = d.downgradeType !== 'provenance' && d.keptProvenance ? ' (kept provenance)' : ''
       const msg = `${d.name} ${base}: ${d.from} -> ${d.to}${extra}`
       if (line)
         annotate(level, lockfilePath, line, 1, msg)

@@ -1,5 +1,5 @@
 name: Provenance downgrade check
-description: Fail CI when dependencies in your lockfile lose npm provenance or trusted publisher status.
+description: Fail CI when dependencies in your lockfile lose npm provenance, trusted publisher or staged publishing status.
 author: Daniel Roe (@danielroe)
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
