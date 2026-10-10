@@ -10,7 +10,7 @@
     },
     "packageManager": {
       "name": "pnpm",
-      "version": "12.3.4",
+      "version": "12.11.1",
       "onFail": "download"
     }
   },
@@ -27,10 +27,10 @@
     "release": "bumpp"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "9.3.0",
-    "@types/node": "24.13.3",
+    "@antfu/eslint-config": "9.5.1",
+    "@types/node": "24.19.1",
     "@vitest/coverage-v8": "5.0.3",
-    "bumpp": "12.2.2",
+    "bumpp": "12.3.0",
     "eslint": "10.12.0",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
